@@ -1,12 +1,13 @@
 {
+  "name": "muumuu-mcp-skills",
+  "owner": {
+    "name": "harakeishi"
+  },
   "plugins": [
     {
       "name": "muumuu-mcp-skills",
       "description": "Claude Code skills for Muumuu Domain MCP Server - domain security audit, DNS health check, typosquatting detection",
-      "source": {
-        "type": "git",
-        "url": "https://github.com/harakeishi/muumuu-mcp-skills.git"
-      }
+      "source": "."
     }
   ]
 }
