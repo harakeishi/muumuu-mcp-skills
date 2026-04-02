@@ -1,6 +1,6 @@
 ---
 name: domain-report
-description: Generate a security and health report for your domains. DNS configuration checks (SPF/DMARC/CAA), subdomain takeover detection, and lookalike domain monitoring (typosquatting/homograph attacks). Triggers on "domain report", "domain audit", "DNS health", "domain security"
+description: Generate a security and health report for your domains. DNS configuration checks (SPF/DMARC/CAA/DNSSEC), subdomain takeover detection, and lookalike domain monitoring (typosquatting/homograph attacks). Triggers on "domain report", "domain audit", "DNS health", "domain security"
 ---
 
 # Domain Report - Domain Security & Health Report
@@ -24,11 +24,21 @@ Combines muumuu-domain MCP + dig/curl/openssl commands for diagnosis.
 
 ## Execution Flow
 
-### Phase 1: Target Domain Identification
+### Phase 1: Target Domain Identification & Usage Classification
 
 1. User specifies domain → use as-is
 2. No domain specified → retrieve domain list via `mcp__muumuu-domain__list-me-domains` and ask user to select
 3. "All" → target all domains (confirm if more than 10)
+
+After identifying the target domain, **classify its usage status** based on DNS records and HTTP response:
+
+| Condition | Classification |
+|-----------|---------------|
+| Has A/AAAA/CNAME/ALIAS record AND HTTP 200 | **Active** (full report) |
+| Has A/AAAA/CNAME/ALIAS record but no HTTP response | **Partially configured** (full report with notes) |
+| NS records only, no other records | **Unused / Brand protection** (compact report) |
+
+**For unused domains**: Skip SSL check, subdomain takeover check, and detailed lookalike tables. Focus on SPF `-all` recommendation, auto-renew status, and high-risk lookalike domains only (third-party registered).
 
 ### Phase 2: Information Gathering (Parallel Execution)
 
@@ -46,7 +56,7 @@ mcp__muumuu-domain__list-me-dns-records(domain-id, page-size: 100)
 ```
 - Retrieve all records (handle pagination)
 
-#### 2-C: DNS Propagation Check (via Bash)
+#### 2-C: DNS Propagation & Security Check (via Bash)
 ```bash
 # Check actual responses for each record type
 dig +short example.com A
@@ -56,6 +66,10 @@ dig +short example.com TXT
 dig +short example.com NS
 dig +short example.com CAA
 dig +short _dmarc.example.com TXT
+
+# DNSSEC check
+dig example.com DNSKEY +short
+dig example.com DS +short
 ```
 
 #### 2-D: Lookalike Domain Search
@@ -93,6 +107,8 @@ No DMARC record             → No last line of defense for email auth
 
 #### 3-2: SSL/CA Authentication Check
 
+Only for **active** domains (skip for unused domains).
+
 | Check Item | Method | Severity |
 |-----------|--------|----------|
 | CAA record not configured | No CAA record exists | Warning |
@@ -103,7 +119,24 @@ No DMARC record             → No last line of defense for email auth
 echo | openssl s_client -servername example.com -connect example.com:443 2>/dev/null | openssl x509 -noout -dates -issuer 2>/dev/null
 ```
 
-#### 3-3: Subdomain Takeover Risk
+#### 3-3: DNSSEC Check
+
+| Check Item | Method | Severity |
+|-----------|--------|----------|
+| DNSSEC not enabled | No DNSKEY or DS record found via `dig` | Info |
+
+```bash
+dig example.com DNSKEY +short
+dig example.com DS +short
+```
+
+- If both return empty → DNSSEC is not enabled
+- DNSSEC protects against DNS spoofing/cache poisoning attacks
+- Severity is Info because enabling DNSSEC requires registrar support and misconfiguration can cause outages
+
+#### 3-4: Subdomain Takeover Risk
+
+Only for **active** domains (skip for unused domains).
 
 | Check Item | Method | Severity |
 |-----------|--------|----------|
@@ -128,7 +161,7 @@ Known dangerous CNAME patterns:
 - `*.vercel.app` → Vercel (auto-protection available)
 - `*.shopify.com` → Shopify
 
-#### 3-4: Additional Checks
+#### 3-5: Additional Checks
 
 | Check Item | Method | Severity |
 |-----------|--------|----------|
@@ -189,7 +222,7 @@ mcp__muumuu-domain__search-domains(q: "examp1e", tlds: ["com", "net", "jp"])
 
 **Note**: API call volume can be high, so be selective with candidates. TLD variants can be batched into a single API call using the `tlds` parameter.
 
-#### 4-3: Risk Classification
+#### 4-3: Risk Classification & Display Rules
 
 | Status | Risk | Action |
 |--------|------|--------|
@@ -198,16 +231,40 @@ mcp__muumuu-domain__search-domains(q: "examp1e", tlds: ["com", "net", "jp"])
 | Owned by you | Safe | No issue |
 | Unsearchable (premium, etc.) | Unknown | Recommend manual check |
 
+**Display rules for the report**:
+- **If any third-party registrations are found**: Show full table with all results, highlighting the threats
+- **If ALL lookalike domains are available (no threats)**: Show a single summary line instead of a full table:
+  > "No lookalike domains registered by third parties. All {n} candidates checked are available."
+- **Unsearchable/errored candidates**: Omit from table entirely. Only mention if the unsearchable domain is a major TLD variant (.com, .net, .jp)
+
 ### Phase 5: Report Generation
 
-Generate a Markdown report following the template below and save to file.
+Generate a Markdown report and save to file.
 
 Output path: `domain-report-{domain}-{YYYYMMDD}.md`
+
+**IMPORTANT: Report structure rules**:
+
+1. **Start with an Executive Summary** (2-3 lines max) stating the domain's status and the top actions needed. The reader should understand the situation without reading further.
+
+2. **Use the user's language** for the report content. Detect from conversation context.
+
+3. **After presenting the report**, offer to fix actionable items via MCP:
+   - "Would you like me to add the SPF record via MCP now?"
+   - "Would you like me to add the DMARC record?"
+   - "Would you like me to add the CAA record?"
+   This turns the report from read-only into an actionable workflow.
+
+#### Report Template
 
 ```markdown
 # Domain Security Report - {domain}
 
-Generated: {YYYY-MM-DD HH:MM}
+Generated: {YYYY-MM-DD}
+
+> **Executive Summary**: {1-2 sentence description of domain status and key actions needed}
+> Example: "yaserarenai.dev is an active domain hosted on Lolipop Managed Cloud. SPF and DMARC are not configured — email spoofing is possible. Add `v=spf1 -all` and enable auto-renewal."
+> Example (unused): "mouda.me has no DNS records configured (brand protection only). Add `v=spf1 -all` to prevent email spoofing. No lookalike domain threats detected."
 
 ## Summary
 
@@ -215,62 +272,41 @@ Generated: {YYYY-MM-DD HH:MM}
 |------|--------|
 | Domain | {domain} |
 | State | {active/inactive} |
+| Classification | {Active / Unused / Partially configured} |
 | Expiry | {expiry_date} |
+| Auto-renew | {Enabled/Disabled} |
 | DNS Records | {count} |
 | Issues Found | Critical: {n}, Warning: {n}, Info: {n} |
 
 ## DNS Health Check
 
 ### Critical
-
-- **[CRITICAL] SPF not configured**: Risk of email spoofing
-  - Recommended: Add TXT record `v=spf1 include:{appropriate SPF source} ~all`
+{Only show if critical issues exist}
 
 ### Warning
-
-- **[WARNING] DMARC not configured**: No last line of defense for email authentication
-  - Recommended: Add `v=DMARC1; p=none; rua=mailto:dmarc@{domain}` and harden gradually
+{Only show if warnings exist}
 
 ### Info
-
-- **[INFO] CAA record not configured**: Any CA can issue SSL certificates for this domain
-  - Recommended: Add CAA record to restrict issuance to your CA only
+{Only show if info items exist}
 
 ## Subdomain Takeover Risk
-
-| Subdomain | Record Type | Target | Status | Risk |
-|-----------|------------|--------|--------|------|
-| staging.example.com | CNAME | old-app.herokuapp.com | NXDOMAIN | Critical |
+{Only for active domains. Omit section entirely for unused domains.}
 
 ## Similar Domain Monitoring
 
-### Typosquatting
+{If no third-party registrations found:}
+> No lookalike domains registered by third parties were detected. {n} candidates checked across typosquatting, homograph, and TLD variants — all available.
 
-| Domain | Type | Status | Risk |
-|--------|------|--------|------|
-| examp1e.com | Digit substitution (l→1) | Registered by third party | High |
-| examlpe.com | Character swap | Available | Medium |
-
-### TLD Variants
-
-| Domain | Status | Risk |
-|--------|--------|------|
-| example.net | Available | Medium |
-| example.org | Registered by third party | High |
+{If third-party registrations found: show full table with ONLY the threats, plus a count of safe candidates}
 
 ## Recommendations
 
-1. **[Immediate]** Configure SPF record
-2. **[Recommended]** Set DMARC to `p=quarantine` or higher
-3. **[Recommended]** Remove CNAME for staging.example.com (takeover risk)
-4. **[Consider]** Defensive registration of example.net
+| Priority | Action | Details |
+|----------|--------|---------|
+| ... | ... | ... |
 
 ## DNS Records (Reference)
-
-| FQDN | Type | Value | TTL |
-|------|------|-------|-----|
-| example.com. | A | 76.76.21.21 | 300 |
-| ... | ... | ... | ... |
+{Full table of current DNS records}
 ```
 
 ## Implementation Notes
