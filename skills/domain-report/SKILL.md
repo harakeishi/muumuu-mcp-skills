@@ -1,54 +1,54 @@
 ---
 name: domain-report
-description: 保有ドメインのセキュリティ・健全性レポートを生成する。DNS設定チェック(SPF/DMARC/CAA)、サブドメインテイクオーバー検知、類似ドメイン監視(タイポスクワッティング/ホモグラフ攻撃)。「ドメインレポート」「ドメイン診断」「DNS健全性」「ドメインセキュリティ」で自動適用
+description: Generate a security and health report for your domains. DNS configuration checks (SPF/DMARC/CAA), subdomain takeover detection, and lookalike domain monitoring (typosquatting/homograph attacks). Triggers on "domain report", "domain audit", "DNS health", "domain security"
 ---
 
-# Domain Report - ドメインセキュリティ & 健全性レポート
+# Domain Report - Domain Security & Health Report
 
 ## Overview
 
-保有ドメインに対してセキュリティ・健全性の包括的チェックを行い、Markdownレポートを生成する。
-muumuu-domain MCP + dig/curl/openssl コマンドを組み合わせて診断する。
+Perform a comprehensive security and health check on your domains and generate a Markdown report.
+Combines muumuu-domain MCP + dig/curl/openssl commands for diagnosis.
 
-### 前提条件
+### Prerequisites
 
-- [muumuu-domain MCP Server](https://github.com/because0/muumuu-domain-mcp-server) がClaude Codeに設定済みであること
-- `dig`, `curl`, `openssl` コマンドが利用可能であること
+- [muumuu-domain MCP Server](https://github.com/because0/muumuu-domain-mcp-server) configured in Claude Code
+- `dig`, `curl`, `openssl` commands available
 
 ## When to Use
 
-- 保有ドメインのセキュリティ状態を確認したいとき
-- DNS設定に問題がないか定期チェックしたいとき
-- 類似ドメインが第三者に取得されていないか監視したいとき
-- 「ドメインレポート」「ドメイン診断」「DNS健全性チェック」と言われたとき
+- When you want to check the security posture of your domains
+- For periodic DNS configuration health checks
+- To monitor whether lookalike domains have been registered by third parties
+- When the user says "domain report", "domain audit", "DNS health check"
 
-## 実行フロー
+## Execution Flow
 
-### Phase 1: 対象ドメインの特定
+### Phase 1: Target Domain Identification
 
-1. ユーザーが対象ドメインを指定 → そのまま使用
-2. 指定なし → `mcp__muumuu-domain__list-me-domains` で保有ドメイン一覧を取得し、ユーザーに選択を求める
-3. 「全部」と言われたら全ドメインを対象にする（ただし10件以上なら確認）
+1. User specifies domain → use as-is
+2. No domain specified → retrieve domain list via `mcp__muumuu-domain__list-me-domains` and ask user to select
+3. "All" → target all domains (confirm if more than 10)
 
-### Phase 2: 情報収集（並列実行）
+### Phase 2: Information Gathering (Parallel Execution)
 
-対象ドメインごとに以下を**サブエージェントで並列実行**する:
+Execute the following **in parallel via sub-agents** for each target domain:
 
-#### 2-A: ドメイン基本情報
+#### 2-A: Domain Basic Info
 ```
 mcp__muumuu-domain__get-me-domain(domain-id)
 ```
-- ドメイン状態、有効期限を取得
+- Retrieve domain state, expiry date
 
-#### 2-B: DNSレコード全取得
+#### 2-B: Full DNS Record Retrieval
 ```
 mcp__muumuu-domain__list-me-dns-records(domain-id, page-size: 100)
 ```
-- 全レコードを取得（ページネーション対応）
+- Retrieve all records (handle pagination)
 
-#### 2-C: DNS伝播確認（Bashで実行）
+#### 2-C: DNS Propagation Check (via Bash)
 ```bash
-# 各レコードタイプの実際の応答を確認
+# Check actual responses for each record type
 dig +short example.com A
 dig +short example.com AAAA
 dig +short example.com MX
@@ -58,114 +58,114 @@ dig +short example.com CAA
 dig +short _dmarc.example.com TXT
 ```
 
-#### 2-D: 類似ドメイン検索
-後述の「Phase 4: 類似ドメイン監視」で使用するドメイン候補を生成し、search-domains で検索。
+#### 2-D: Lookalike Domain Search
+Generate lookalike domain candidates for use in "Phase 4: Lookalike Domain Monitoring" and search via search-domains.
 
-### Phase 3: DNS健全性チェック
+### Phase 3: DNS Health Check
 
-取得した情報に対して以下のチェックを実行する。
+Run the following checks against the gathered data.
 
-#### 3-1: メール認証チェック
+#### 3-1: Email Authentication Check
 
-| チェック項目 | 判定方法 | 重大度 |
-|------------|---------|--------|
-| SPF未設定 | TXTレコードに `v=spf1` が存在しない | Critical |
-| SPF が `+all` | SPF値の末尾が `+all` | Critical |
-| DMARC未設定 | `_dmarc.{domain}` のTXTレコードが存在しない | Warning |
-| DMARCポリシーが `none` | `p=none` のまま運用 | Info |
-| DKIM未確認 | TXTレコードにDKIMセレクタが見つからない | Info（検出困難なため参考情報） |
+| Check Item | Method | Severity |
+|-----------|--------|----------|
+| SPF not configured | No `v=spf1` in TXT records | Critical |
+| SPF allows all (`+all`) | SPF value ends with `+all` | Critical |
+| DMARC not configured | No TXT record at `_dmarc.{domain}` | Warning |
+| DMARC policy is `none` | Running with `p=none` | Info |
+| DKIM not found | No DKIM selector in TXT records | Info (hard to detect; informational only) |
 
-**SPFチェックの詳細**:
+**SPF Check Details**:
 ```
 v=spf1 include:_spf.google.com ~all  → OK
-v=spf1 include:_spf.google.com -all  → OK（厳格）
-v=spf1 +all                           → 全許可（危険）
-SPFレコードなし                         → なりすまし可能
+v=spf1 include:_spf.google.com -all  → OK (strict)
+v=spf1 +all                           → Allows all (dangerous)
+No SPF record                          → Spoofing possible
 ```
 
-**DMARCチェックの詳細**:
+**DMARC Check Details**:
 ```
-v=DMARC1; p=reject; ...    → 最も安全
-v=DMARC1; p=quarantine; ... → 推奨レベル
-v=DMARC1; p=none; ...      → 監視のみ（強化推奨）
-DMARCレコードなし            → メール認証の最終防衛線なし
+v=DMARC1; p=reject; ...    → Most secure
+v=DMARC1; p=quarantine; ... → Recommended level
+v=DMARC1; p=none; ...      → Monitor only (hardening recommended)
+No DMARC record             → No last line of defense for email auth
 ```
 
-#### 3-2: SSL/CA認証チェック
+#### 3-2: SSL/CA Authentication Check
 
-| チェック項目 | 判定方法 | 重大度 |
-|------------|---------|--------|
-| CAAレコード未設定 | CAAレコードが存在しない | Warning |
-| SSL証明書の有効期限 | `openssl s_client` で確認 | 30日以内ならWarning |
+| Check Item | Method | Severity |
+|-----------|--------|----------|
+| CAA record not configured | No CAA record exists | Warning |
+| SSL certificate expiry | Check via `openssl s_client` | Warning if within 30 days |
 
 ```bash
-# SSL証明書確認
+# SSL certificate check
 echo | openssl s_client -servername example.com -connect example.com:443 2>/dev/null | openssl x509 -noout -dates -issuer 2>/dev/null
 ```
 
-#### 3-3: サブドメインテイクオーバーリスク
+#### 3-3: Subdomain Takeover Risk
 
-| チェック項目 | 判定方法 | 重大度 |
-|------------|---------|--------|
-| CNAMEの参照先が解決不能 | CNAMEレコードの値に対して `dig` → NXDOMAIN | Critical |
-| Aレコードの向き先がHTTP応答なし | `curl -sI --max-time 5 http://{ip}` → タイムアウト | Warning |
+| Check Item | Method | Severity |
+|-----------|--------|----------|
+| CNAME target unresolvable | `dig` on CNAME value → NXDOMAIN | Critical |
+| A record target not responding | `curl -sI --max-time 5 http://{ip}` → timeout | Warning |
 
-**サブドメインテイクオーバーの判定ロジック**:
+**Subdomain Takeover Detection Logic**:
 ```
-1. CNAMEレコードを全取得
-2. 各CNAMEの参照先を dig で解決
-3. NXDOMAIN or SERVFAIL → テイクオーバーリスクあり
-4. 特にクラウドサービスのCNAME（*.herokuapp.com, *.azurewebsites.net 等）は要注意
+1. Retrieve all CNAME records
+2. Resolve each CNAME target via dig
+3. NXDOMAIN or SERVFAIL → takeover risk detected
+4. Cloud service CNAMEs (*.herokuapp.com, *.azurewebsites.net, etc.) are high priority
 ```
 
-既知の危険なCNAMEパターン:
+Known dangerous CNAME patterns:
 - `*.herokuapp.com` → Heroku
 - `*.azurewebsites.net` → Azure
 - `*.cloudfront.net` → CloudFront
 - `*.s3.amazonaws.com` → S3
 - `*.github.io` → GitHub Pages
 - `*.netlify.app` → Netlify
-- `*.vercel.app` → Vercel (ただしVercelは自動保護あり)
+- `*.vercel.app` → Vercel (auto-protection available)
 - `*.shopify.com` → Shopify
 
-#### 3-4: その他のチェック
+#### 3-4: Additional Checks
 
-| チェック項目 | 判定方法 | 重大度 |
-|------------|---------|--------|
-| ワイルドカードDNSレコード | `*.domain` のA/CNAMEレコード存在 | Info |
-| 未使用のAレコード疑い | Aレコードの向き先にHTTP接続できない | Info |
+| Check Item | Method | Severity |
+|-----------|--------|----------|
+| Wildcard DNS record | `*.domain` A/CNAME record exists | Info |
+| Suspected unused A record | A record target not responding to HTTP | Info |
 
-### Phase 4: 類似ドメイン監視（ホモグラフ / タイポスクワッティング）
+### Phase 4: Lookalike Domain Monitoring (Homograph / Typosquatting)
 
-対象ドメインの SLD（セカンドレベルドメイン）に対して類似ドメイン候補を生成し、取得状況を確認する。
+Generate lookalike domain candidates from the SLD (second-level domain) of the target and check their registration status.
 
-#### 4-1: 類似ドメイン候補の生成
+#### 4-1: Lookalike Domain Candidate Generation
 
-対象ドメインが `example.com` の場合:
+For target domain `example.com`:
 
-**タイポスクワッティング**（文字入れ替え・脱落・追加）:
+**Typosquatting** (character swap, omission, addition):
 ```
-examlpe.com    # 隣接文字入れ替え
-exmple.com     # 文字脱落
-examplle.com   # 文字重複
-exampke.com    # 隣接キー誤打（l→k）
+examlpe.com    # adjacent character swap
+exmple.com     # character omission
+examplle.com   # character duplication
+exampke.com    # adjacent key typo (l→k)
 ```
-生成ルール:
-- 隣接2文字の入れ替え（全パターン）
-- 1文字脱落（全位置）
-- 1文字重複（全位置）
-- 隣接キー置換（QWERTYレイアウト、主要文字のみ）
-- ただし候補が多すぎる場合は代表的なものに絞る（最大15件）
+Generation rules:
+- Swap adjacent 2-character pairs (all patterns)
+- Single character omission (all positions)
+- Single character duplication (all positions)
+- Adjacent key substitution (QWERTY layout, major characters only)
+- Limit to representative candidates if too many (max 15)
 
-**数字/文字置換（ホモグラフ的）**:
+**Character/digit substitution (homograph-like)**:
 ```
 examp1e.com    # l→1
 exarnple.com   # m→rn
-examp|e.com    # l→|（パイプ）
+examp|e.com    # l→| (pipe)
 ```
-置換テーブル:
-| 元文字 | 置換候補 |
-|--------|---------|
+Substitution table:
+| Original | Substitutions |
+|----------|--------------|
 | l | 1, i |
 | o | 0 |
 | i | 1, l |
@@ -174,35 +174,35 @@ examp|e.com    # l→|（パイプ）
 | s | 5 |
 | m | rn |
 
-**TLD違い**:
+**TLD variants**:
 ```
 example.net, example.org, example.jp, example.co.jp, example.info
 ```
 
-#### 4-2: 空き状況確認
+#### 4-2: Availability Check
 
-生成した候補を `mcp__muumuu-domain__search-domains` で検索:
+Search generated candidates via `mcp__muumuu-domain__search-domains`:
 ```
 mcp__muumuu-domain__search-domains(q: "examlpe.com")
 mcp__muumuu-domain__search-domains(q: "examp1e", tlds: ["com", "net", "jp"])
 ```
 
-**注意**: search-domains API の呼び出し回数が多くなるため、候補は厳選する。TLD違いは1回のAPI呼び出しでまとめて検索できる。
+**Note**: API call volume can be high, so be selective with candidates. TLD variants can be batched into a single API call using the `tlds` parameter.
 
-#### 4-3: リスク分類
+#### 4-3: Risk Classification
 
-| 状況 | リスク | アクション |
-|------|--------|----------|
-| 第三者が取得済み | High | フィッシングサイトの可能性。実際にアクセスして内容確認を推奨 |
-| 空き（取得可能） | Medium | 防御的取得を検討 |
-| あなたが保有 | Safe | 問題なし |
-| 検索不可（プレミアム等） | Unknown | 手動確認を推奨 |
+| Status | Risk | Action |
+|--------|------|--------|
+| Registered by third party | High | Possible phishing site. Recommend checking actual content |
+| Available | Medium | Consider defensive registration |
+| Owned by you | Safe | No issue |
+| Unsearchable (premium, etc.) | Unknown | Recommend manual check |
 
-### Phase 5: レポート生成
+### Phase 5: Report Generation
 
-以下のテンプレートに従ってMarkdownレポートを生成し、ファイルに保存する。
+Generate a Markdown report following the template below and save to file.
 
-保存先: `domain-report-{domain}-{YYYYMMDD}.md`
+Output path: `domain-report-{domain}-{YYYYMMDD}.md`
 
 ```markdown
 # Domain Security Report - {domain}
@@ -211,59 +211,59 @@ Generated: {YYYY-MM-DD HH:MM}
 
 ## Summary
 
-| 項目 | 結果 |
-|------|------|
-| ドメイン | {domain} |
-| 状態 | {active/inactive} |
-| 有効期限 | {expiry_date} |
-| DNSレコード数 | {count}件 |
-| 問題検出数 | Critical: {n}, Warning: {n}, Info: {n} |
+| Item | Result |
+|------|--------|
+| Domain | {domain} |
+| State | {active/inactive} |
+| Expiry | {expiry_date} |
+| DNS Records | {count} |
+| Issues Found | Critical: {n}, Warning: {n}, Info: {n} |
 
 ## DNS Health Check
 
 ### Critical
 
-- **[CRITICAL] SPF未設定**: なりすましメールのリスクがあります
-  - 推奨: `v=spf1 include:{適切なSPFソース} ~all` のTXTレコードを追加
+- **[CRITICAL] SPF not configured**: Risk of email spoofing
+  - Recommended: Add TXT record `v=spf1 include:{appropriate SPF source} ~all`
 
 ### Warning
 
-- **[WARNING] DMARC未設定**: メール認証の最終防衛線がありません
-  - 推奨: `v=DMARC1; p=none; rua=mailto:dmarc@{domain}` から段階的に導入
+- **[WARNING] DMARC not configured**: No last line of defense for email authentication
+  - Recommended: Add `v=DMARC1; p=none; rua=mailto:dmarc@{domain}` and harden gradually
 
 ### Info
 
-- **[INFO] CAAレコード未設定**: 任意のCAからSSL証明書を発行可能な状態です
-  - 推奨: 使用しているCAのみを許可するCAAレコードを追加
+- **[INFO] CAA record not configured**: Any CA can issue SSL certificates for this domain
+  - Recommended: Add CAA record to restrict issuance to your CA only
 
 ## Subdomain Takeover Risk
 
-| サブドメイン | レコードタイプ | 参照先 | 状態 | リスク |
-|------------|-------------|--------|------|--------|
+| Subdomain | Record Type | Target | Status | Risk |
+|-----------|------------|--------|--------|------|
 | staging.example.com | CNAME | old-app.herokuapp.com | NXDOMAIN | Critical |
 
 ## Similar Domain Monitoring
 
 ### Typosquatting
 
-| ドメイン | タイプ | 状況 | リスク |
-|---------|--------|------|--------|
-| examp1e.com | 数字置換 (l→1) | 第三者取得済み | High |
-| examlpe.com | 文字入れ替え | 空き | Medium |
+| Domain | Type | Status | Risk |
+|--------|------|--------|------|
+| examp1e.com | Digit substitution (l→1) | Registered by third party | High |
+| examlpe.com | Character swap | Available | Medium |
 
 ### TLD Variants
 
-| ドメイン | 状況 | リスク |
-|---------|------|--------|
-| example.net | 空き | Medium |
-| example.org | 第三者取得済み | High |
+| Domain | Status | Risk |
+|--------|--------|------|
+| example.net | Available | Medium |
+| example.org | Registered by third party | High |
 
 ## Recommendations
 
-1. **[即時対応]** SPFレコードを設定してください
-2. **[推奨]** DMARCを `p=quarantine` 以上に設定してください
-3. **[推奨]** staging.example.com のCNAMEを削除してください（テイクオーバーリスク）
-4. **[検討]** example.net の防御的取得を検討してください
+1. **[Immediate]** Configure SPF record
+2. **[Recommended]** Set DMARC to `p=quarantine` or higher
+3. **[Recommended]** Remove CNAME for staging.example.com (takeover risk)
+4. **[Consider]** Defensive registration of example.net
 
 ## DNS Records (Reference)
 
@@ -273,42 +273,42 @@ Generated: {YYYY-MM-DD HH:MM}
 | ... | ... | ... | ... |
 ```
 
-## 実装上の注意
+## Implementation Notes
 
-### API呼び出し効率
+### API Call Efficiency
 
-- `list-me-dns-records` は `page-size: 100` で一度に取得
-- 類似ドメイン検索は `tlds` パラメータで1回にまとめる
-- 複数ドメイン対象時はサブエージェントで並列実行
+- Use `page-size: 100` for `list-me-dns-records` to fetch all at once
+- Batch lookalike domain searches using the `tlds` parameter
+- Use sub-agents for parallel execution when targeting multiple domains
 
-### dig コマンドのフォールバック
+### dig Command Fallback
 
-dig が使えない環境では `nslookup` または `host` コマンドを使用:
+If `dig` is unavailable, use `nslookup` or `host`:
 ```bash
-# dig が使えない場合
+# If dig is unavailable
 nslookup -type=TXT _dmarc.example.com
 host -t MX example.com
 ```
 
-### エラーハンドリング
+### Error Handling
 
-- MCP認証エラー → ユーザーに再認証を案内
-- ドメインが見つからない → FQDN指定で `list-me-domains` を再試行
-- dig タイムアウト → 3秒タイムアウトで `dig +time=3` を使用
-- 類似ドメイン検索でAPIエラー → スキップしてレポートに「検索不可」と記載
+- MCP auth error → prompt user to re-authenticate
+- Domain not found → retry with FQDN filter on `list-me-domains`
+- dig timeout → use `dig +time=3` for 3-second timeout
+- Lookalike domain search API error → skip and note "search unavailable" in report
 
-### 複数ドメインの場合
+### Multiple Domains
 
-10件以上のドメインを対象にする場合:
-1. AskUserQuestion で本当に全件実行するか確認
-2. 各ドメインのレポートを個別ファイルで生成
-3. サマリーレポートを別途生成:
+When targeting more than 10 domains:
+1. Confirm with AskUserQuestion whether to proceed with all
+2. Generate individual report files per domain
+3. Generate a separate summary report:
 
 ```markdown
 # Domain Portfolio Summary - {YYYY-MM-DD}
 
-| ドメイン | 有効期限 | Critical | Warning | Info |
-|---------|---------|----------|---------|------|
+| Domain | Expiry | Critical | Warning | Info |
+|--------|--------|----------|---------|------|
 | example.com | 2027/03/15 | 1 | 2 | 1 |
 | example.jp | 2026/06/01 | 0 | 0 | 1 |
 ```

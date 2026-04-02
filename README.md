@@ -1,44 +1,44 @@
 # muumuu-mcp-skills
 
-[Muumuu Domain MCP Server](https://github.com/because0/muumuu-domain-mcp-server) と連携する Claude Code スキル集です。
+A collection of [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skills for the [Muumuu Domain MCP Server](https://github.com/because0/muumuu-domain-mcp-server).
 
 ## Skills
 
-### `/domain-report` - ドメインセキュリティ & 健全性レポート
+### `/domain-report` - Domain Security & Health Report
 
-保有ドメインに対してセキュリティ・健全性の包括的チェックを行い、Markdownレポートを生成します。
+Performs a comprehensive security and health check on your domains and generates a Markdown report.
 
-**チェック項目:**
+**What it checks:**
 
-- **DNS健全性**: SPF / DMARC / CAA レコードの設定状況
-- **SSL証明書**: 有効期限・発行者の確認
-- **サブドメインテイクオーバー**: CNAME参照先の生存確認
-- **類似ドメイン監視**: タイポスクワッティング・ホモグラフ攻撃の検知
+- **DNS Health**: SPF / DMARC / CAA record configuration
+- **SSL Certificates**: Expiry dates, issuer verification
+- **Subdomain Takeover**: CNAME target liveness checks
+- **Lookalike Domain Monitoring**: Typosquatting and homograph attack detection
 
-**使い方:**
+**Usage:**
 
 ```
 /domain-report example.com
 ```
 
-**出力例:**
+**Example output:**
 
 ```
 Domain Security Report - example.com
 
-問題検出: Critical 1 / Warning 2 / Info 1
+Issues Found: Critical 1 / Warning 2 / Info 1
 
-- [CRITICAL] SPF未設定: なりすましメールのリスク
-- [WARNING] DMARC未設定: メール認証の最終防衛線なし
-- [WARNING] CAA未設定: 任意のCAからSSL証明書発行可能
+- [CRITICAL] SPF not configured: Email spoofing risk
+- [WARNING] DMARC not configured: No last line of defense for email auth
+- [WARNING] CAA not configured: Any CA can issue SSL certificates
 ```
 
-## 前提条件
+## Prerequisites
 
-1. [Claude Code](https://docs.anthropic.com/en/docs/claude-code) がインストール済みであること
-2. [Muumuu Domain MCP Server](https://github.com/because0/muumuu-domain-mcp-server) が設定済みであること
+1. [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed
+2. [Muumuu Domain MCP Server](https://github.com/because0/muumuu-domain-mcp-server) configured
 
-## インストール
+## Installation
 
 ```bash
 claude plugin add harakeishi/muumuu-mcp-skills

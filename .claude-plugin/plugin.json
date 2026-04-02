@@ -1,6 +1,6 @@
 {
   "name": "muumuu-mcp-skills",
-  "description": "Skills for Muumuu Domain MCP Server - domain security audit, DNS health check, typosquatting detection",
+  "description": "Claude Code skills for Muumuu Domain MCP Server - domain security audit, DNS health check, typosquatting detection",
   "version": "1.0.0",
   "author": {
     "name": "harakeishi"
