@@ -55,7 +55,7 @@ Issues Found: Critical 1 / Warning 2 / Info 1
 ### Alternative: Local testing
 
 ```bash
-claude --plugin-dir /path/to/muumuu-mcp-skills
+claude --plugin-dir /path/to/muumuu-mcp-skills/muumuu-mcp-skills
 ```
 
 ## License
