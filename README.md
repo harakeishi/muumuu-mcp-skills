@@ -40,8 +40,22 @@ Issues Found: Critical 1 / Warning 2 / Info 1
 
 ## Installation
 
+### Step 1: Add the marketplace
+
+```
+/plugin marketplace add harakeishi/muumuu-mcp-skills
+```
+
+### Step 2: Install the plugin
+
+```
+/plugin install muumuu-mcp-skills@harakeishi-muumuu-mcp-skills
+```
+
+### Alternative: Local testing
+
 ```bash
-claude plugin add harakeishi/muumuu-mcp-skills
+claude --plugin-dir /path/to/muumuu-mcp-skills
 ```
 
 ## License

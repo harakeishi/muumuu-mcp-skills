@@ -4,5 +4,9 @@
   "version": "1.0.0",
   "author": {
     "name": "harakeishi"
-  }
+  },
+  "repository": "https://github.com/harakeishi/muumuu-mcp-skills",
+  "license": "MIT",
+  "keywords": ["muumuu-domain", "dns", "security", "domain-audit"],
+  "skills": "./skills/"
 }
